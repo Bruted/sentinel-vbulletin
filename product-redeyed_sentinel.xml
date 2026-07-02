@@ -6,14 +6,17 @@
   Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to
   the vBulletin registration form.
 
-  Sentinel is free to install and stays INERT until both the Site Key and the
-  API Key are configured. With empty keys the product "fails open" and never
+  Sentinel is free to install and stays INERT until the Secret Key is
+  configured. With an empty Secret Key the product "fails open" and never
   blocks registration.
 
+  Both keys come from the Redeyed Lab -> Sentinel -> Sites. The Secret Key is
+  shown only once when the site is created.
+
   Settings (AdminCP -> Settings -> Options -> Redeyed Sentinel):
-    redeyed_sentinel_site_key  public site key (safe in HTML)
-    redeyed_sentinel_api_key   secret API key (server-side only, X-Api-Key)
-    redeyed_sentinel_base_url  base URL (default https://redeyed.com)
+    redeyed_sentinel_site_key    public site key (safe in HTML, renders widget)
+    redeyed_sentinel_secret_key  per-site secret key (server-side only, never echoed)
+    redeyed_sentinel_base_url    base URL (default https://redeyed.com)
 
   Author : Redeyed Corporation (https://redeyed.com)
   License: MIT (2026)
@@ -21,8 +24,8 @@
 
 <product productid="redeyed_sentinel" active="1">
 	<title>Redeyed Sentinel</title>
-	<description>Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to the registration form. Free and inert until the Site Key and API Key are configured.</description>
-	<version>1.0.0</version>
+	<description>Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to the registration form. Free and inert until the Site Key and Secret Key are configured.</description>
+	<version>1.0.1</version>
 	<url>https://redeyed.com</url>
 	<versioncheckurl></versioncheckurl>
 	<dependencies>
@@ -44,7 +47,7 @@
 			<defaultvalue></defaultvalue>
 			<optioncode>textbox</optioncode>
 		</setting>
-		<setting varname="redeyed_sentinel_api_key" displayorder="20">
+		<setting varname="redeyed_sentinel_secret_key" displayorder="20">
 			<datatype>free</datatype>
 			<defaultvalue></defaultvalue>
 			<optioncode>textbox</optioncode>
@@ -142,17 +145,16 @@ if ($rs_site_key !== '') {
 			<hookname>register_addmember_process</hookname>
 			<phpcode><![CDATA[
 // Redeyed Sentinel - verify the submitted CAPTCHA token before the account
-// is created. Fail open when keys are not configured.
-$rs_site_key = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_site_key'));
-$rs_api_key  = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_api_key'));
-$rs_base_url = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_base_url'));
+// is created. Fail open when the Secret Key is not configured.
+$rs_secret_key = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_secret_key'));
+$rs_base_url   = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_base_url'));
 if ($rs_base_url === '') {
     $rs_base_url = 'https://redeyed.com';
 }
 $rs_base_url = rtrim($rs_base_url, '/');
 
-// Only enforce when BOTH keys are present; otherwise Sentinel is inert.
-if ($rs_site_key !== '' && $rs_api_key !== '') {
+// Only enforce when the Secret Key is present; otherwise Sentinel is inert.
+if ($rs_secret_key !== '') {
 
     // Read the posted token across vB4 / vB5 request abstractions.
     $rs_token = '';
@@ -178,15 +180,34 @@ if ($rs_site_key !== '' && $rs_api_key !== '') {
     }
 
     // ------- inline verify helper (cURL) ------------------------------
+    // reCAPTCHA/Turnstile-style siteverify: the per-site Secret Key
+    // authenticates the call in the JSON body (no X-Api-Key header), the
+    // widget response is sent as "response", and the client IP is optional.
     $rs_passed = false;
     if ($rs_token !== '' && function_exists('curl_init')) {
-        $rs_payload = json_encode(array(
-            'site_key' => $rs_site_key,
-            'token'    => $rs_token,
-        ));
+        // Best-effort client IP (optional). Prefer vB's stored IP, fall back
+        // to the raw remote address; only send it when it looks like an IP.
+        $rs_remote_ip = '';
+        if (isset($vbulletin) && isset($vbulletin->userinfo['ipaddress']) && $vbulletin->userinfo['ipaddress'] !== '') {
+            $rs_remote_ip = (string) $vbulletin->userinfo['ipaddress'];
+        } elseif (isset($_SERVER['REMOTE_ADDR'])) {
+            $rs_remote_ip = (string) $_SERVER['REMOTE_ADDR'];
+        }
+        if ($rs_remote_ip !== '' && filter_var($rs_remote_ip, FILTER_VALIDATE_IP) === false) {
+            $rs_remote_ip = '';
+        }
+
+        $rs_body = array(
+            'secret'   => $rs_secret_key,
+            'response' => $rs_token,
+        );
+        if ($rs_remote_ip !== '') {
+            $rs_body['remoteip'] = $rs_remote_ip;
+        }
+        $rs_payload = json_encode($rs_body);
 
         $rs_ch = curl_init();
-        curl_setopt($rs_ch, CURLOPT_URL, $rs_base_url . '/api/v1/verify');
+        curl_setopt($rs_ch, CURLOPT_URL, $rs_base_url . '/sentinel/siteverify');
         curl_setopt($rs_ch, CURLOPT_POST, true);
         curl_setopt($rs_ch, CURLOPT_POSTFIELDS, $rs_payload);
         curl_setopt($rs_ch, CURLOPT_RETURNTRANSFER, true);
@@ -197,7 +218,6 @@ if ($rs_site_key !== '' && $rs_api_key !== '') {
         curl_setopt($rs_ch, CURLOPT_HTTPHEADER, array(
             'Content-Type: application/json',
             'Accept: application/json',
-            'X-Api-Key: ' . $rs_api_key, // secret key: header only, never echoed
         ));
 
         $rs_response = curl_exec($rs_ch);
@@ -207,12 +227,10 @@ if ($rs_site_key !== '' && $rs_api_key !== '') {
 
         if ($rs_errno === 0 && $rs_response !== false && $rs_status >= 200 && $rs_status < 300) {
             $rs_decoded = json_decode($rs_response, true);
-            if (is_array($rs_decoded)) {
-                if (isset($rs_decoded['data']['success']) && $rs_decoded['data']['success'] === true) {
-                    $rs_passed = true;
-                } elseif (isset($rs_decoded['success']) && $rs_decoded['success'] === true) {
-                    $rs_passed = true;
-                }
+            // Response shape: {"success": true|false, "outcome": "...", ...}.
+            // PASSED only when the top-level success === true.
+            if (is_array($rs_decoded) && isset($rs_decoded['success']) && $rs_decoded['success'] === true) {
+                $rs_passed = true;
             }
         }
     }
@@ -249,7 +267,27 @@ if ($rs_site_key !== '' && $rs_api_key !== '') {
 	</plugins>
 
 	<templates />
-	<phrases />
+
+	<!-- ================================================================ -->
+	<!-- Phrases: AdminCP setting-group + setting labels / descriptions.  -->
+	<!-- vBulletin renders each setting using the phrases                 -->
+	<!--   setting_<varname>_title  and  setting_<varname>_desc.          -->
+	<!-- ================================================================ -->
+	<phrases>
+		<phrasetype name="Redeyed Sentinel" fieldname="setting">
+			<phrase name="settinggroup_redeyed_sentinel" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Redeyed Sentinel]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_site_key_title" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Site Key]]></phrase>
+			<phrase name="setting_redeyed_sentinel_site_key_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Public Sentinel site key from Redeyed Lab &amp;rarr; Sentinel &amp;rarr; Sites. Safe to expose in HTML; it renders the CAPTCHA widget on the registration form.]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_secret_key_title" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Secret Key]]></phrase>
+			<phrase name="setting_redeyed_sentinel_secret_key_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Per-site Secret Key from Redeyed Lab &amp;rarr; Sentinel &amp;rarr; Sites (shown only once). Used server-side only to authenticate verification and never printed to the page. While this is empty, Sentinel is inert and registration is never blocked.]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_base_url_title" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL]]></phrase>
+			<phrase name="setting_redeyed_sentinel_base_url_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL of the Sentinel service. Defaults to https://redeyed.com. Only change this if you run a self-hosted Sentinel instance.]]></phrase>
+		</phrasetype>
+	</phrases>
+
 	<helptopics />
 	<cronentries />
 	<faqentries />
