@@ -17,6 +17,10 @@
     redeyed_sentinel_site_key    public site key (safe in HTML, renders widget)
     redeyed_sentinel_secret_key  per-site secret key (server-side only, never echoed)
     redeyed_sentinel_base_url    base URL (default https://redeyed.com)
+    redeyed_sentinel_widget      optional data-widget    (behavioral|checkbox|press_hold|image_pick|...)
+    redeyed_sentinel_theme       optional data-theme     (auto|light|dark)
+    redeyed_sentinel_scheme      optional data-scheme    (colour scheme)
+    redeyed_sentinel_difficulty  optional data-difficulty(easy|medium|hard|max or 1-6; only RAISES strength)
 
   Author : Redeyed Corporation (https://redeyed.com)
   License: MIT (2026)
@@ -25,7 +29,7 @@
 <product productid="redeyed_sentinel" active="1">
 	<title>Redeyed Sentinel</title>
 	<description>Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to the registration form. Free and inert until the Site Key and Secret Key are configured.</description>
-	<version>1.0.1</version>
+	<version>1.0.2</version>
 	<url>https://redeyed.com</url>
 	<versioncheckurl></versioncheckurl>
 	<dependencies>
@@ -55,6 +59,26 @@
 		<setting varname="redeyed_sentinel_base_url" displayorder="30">
 			<datatype>free</datatype>
 			<defaultvalue>https://redeyed.com</defaultvalue>
+			<optioncode>textbox</optioncode>
+		</setting>
+		<setting varname="redeyed_sentinel_widget" displayorder="40">
+			<datatype>free</datatype>
+			<defaultvalue></defaultvalue>
+			<optioncode>textbox</optioncode>
+		</setting>
+		<setting varname="redeyed_sentinel_theme" displayorder="50">
+			<datatype>free</datatype>
+			<defaultvalue></defaultvalue>
+			<optioncode>textbox</optioncode>
+		</setting>
+		<setting varname="redeyed_sentinel_scheme" displayorder="60">
+			<datatype>free</datatype>
+			<defaultvalue></defaultvalue>
+			<optioncode>textbox</optioncode>
+		</setting>
+		<setting varname="redeyed_sentinel_difficulty" displayorder="70">
+			<datatype>free</datatype>
+			<defaultvalue></defaultvalue>
 			<optioncode>textbox</optioncode>
 		</setting>
 	</settings>
@@ -93,16 +117,41 @@ if ($rs_base_url === '') {
 }
 $rs_base_url = rtrim($rs_base_url, '/');
 
+// Optional widget customization. Each is empty by default and only emits a
+// data-* attribute when configured, so the widget is fully backward compatible.
+$rs_widget_style = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_widget'));
+$rs_theme        = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_theme'));
+$rs_scheme       = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_scheme'));
+$rs_difficulty   = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_difficulty'));
+
 if ($rs_site_key !== '') {
     // The site key is public but still escaped to keep it inside the
     // attribute value safely.
     $rs_site_key_esc = htmlspecialchars($rs_site_key, ENT_QUOTES, 'UTF-8');
     $rs_base_url_esc = htmlspecialchars($rs_base_url, ENT_QUOTES, 'UTF-8');
 
+    // Optional widget customization attributes. Each renders only when its
+    // option is non-empty and is escaped exactly like the site key above.
+    // 'difficulty' only RAISES challenge strength above the adaptive baseline;
+    // it never lowers it.
+    $rs_attrs = '';
+    if ($rs_widget_style !== '') {
+        $rs_attrs .= ' data-widget="' . htmlspecialchars($rs_widget_style, ENT_QUOTES, 'UTF-8') . '"';
+    }
+    if ($rs_theme !== '') {
+        $rs_attrs .= ' data-theme="' . htmlspecialchars($rs_theme, ENT_QUOTES, 'UTF-8') . '"';
+    }
+    if ($rs_scheme !== '') {
+        $rs_attrs .= ' data-scheme="' . htmlspecialchars($rs_scheme, ENT_QUOTES, 'UTF-8') . '"';
+    }
+    if ($rs_difficulty !== '') {
+        $rs_attrs .= ' data-difficulty="' . htmlspecialchars($rs_difficulty, ENT_QUOTES, 'UTF-8') . '"';
+    }
+
     $rs_widget = "\n<!-- Redeyed Sentinel -->\n"
         . '<div class="redeyed-sentinel" style="margin:10px 0;">'
         . '<script src="' . $rs_base_url_esc . '/sentinel.js" async></script>'
-        . '<div class="sentinel-captcha" data-sitekey="' . $rs_site_key_esc . '"></div>'
+        . '<div class="sentinel-captcha" data-sitekey="' . $rs_site_key_esc . '"' . $rs_attrs . '></div>'
         . "</div>\n<!-- /Redeyed Sentinel -->\n";
 
     // vB4: $HTML / template output is assembled into the page. We try the
@@ -285,6 +334,18 @@ if ($rs_secret_key !== '') {
 
 			<phrase name="setting_redeyed_sentinel_base_url_title" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL]]></phrase>
 			<phrase name="setting_redeyed_sentinel_base_url_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL of the Sentinel service. Defaults to https://redeyed.com. Only change this if you run a self-hosted Sentinel instance.]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_widget_title" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Widget Type]]></phrase>
+			<phrase name="setting_redeyed_sentinel_widget_desc" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Optional. Sets the widget challenge style via <em>data-widget</em>, e.g. <em>behavioral</em>, <em>checkbox</em>, <em>press_hold</em>, or <em>image_pick</em>. Leave empty to use the Sentinel default.]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_theme_title" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Theme]]></phrase>
+			<phrase name="setting_redeyed_sentinel_theme_desc" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Optional. Sets the widget theme via <em>data-theme</em>: <em>auto</em>, <em>light</em>, or <em>dark</em>. Leave empty to use the Sentinel default (auto).]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_scheme_title" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Colour Scheme]]></phrase>
+			<phrase name="setting_redeyed_sentinel_scheme_desc" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Optional. Sets the widget colour scheme via <em>data-scheme</em> so it can match your forum styling. Leave empty to use the Sentinel default.]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_difficulty_title" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Difficulty]]></phrase>
+			<phrase name="setting_redeyed_sentinel_difficulty_desc" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Optional. Sets the minimum challenge strength via <em>data-difficulty</em>: <em>easy</em>, <em>medium</em>, <em>hard</em>, <em>max</em>, or <em>1</em>&amp;ndash;<em>6</em>. This only <strong>raises</strong> challenge strength above Sentinel's adaptive baseline; it never lowers it. Leave empty to let Sentinel adapt automatically.]]></phrase>
 		</phrasetype>
 	</phrases>
 

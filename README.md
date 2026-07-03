@@ -43,6 +43,29 @@ Both keys come from the same place — **Redeyed Lab → Sentinel → Sites**. T
 **Secret Key** is displayed **only once** when the site is created, so copy it
 right away.
 
+### Optional widget customization
+
+The same option group has four **optional** settings that customise the widget's
+look and behaviour. Each is **empty by default**; when empty, nothing changes and
+the widget renders exactly as before. When set, each is emitted as a `data-*`
+attribute on the `<div class="sentinel-captcha">` element (HTML-escaped the same
+way as the Site Key).
+
+| Setting          | Attribute         | Values                                                        |
+|------------------|-------------------|---------------------------------------------------------------|
+| **Widget Type**  | `data-widget`     | `behavioral`, `checkbox`, `press_hold`, `image_pick`, …       |
+| **Theme**        | `data-theme`      | `auto`, `light`, `dark`                                       |
+| **Colour Scheme**| `data-scheme`     | a colour scheme name to match your forum styling             |
+| **Difficulty**   | `data-difficulty` | `easy`, `medium`, `hard`, `max`, or `1`–`6`                  |
+
+> **Difficulty only raises the challenge.** `data-difficulty` sets a *minimum*
+> challenge strength: it only **raises** difficulty above Sentinel's adaptive
+> baseline, it never lowers it. Leave it empty to let Sentinel adapt
+> automatically.
+
+Leaving any of these empty keeps the Sentinel default for that aspect, so the
+feature is fully backward compatible.
+
 The **Site Key** is public and appears in the registration page HTML.
 The **Secret Key** is secret: it is only ever sent server-side inside the
 verification request body and is never printed to the page.
@@ -56,7 +79,10 @@ verification request body and is never printed to the page.
 - **Render** (hook `register_form_complete`): injects
   `<script src="{base_url}/sentinel.js" async></script>` and
   `<div class="sentinel-captcha" data-sitekey="{site_key}"></div>` into the
-  registration page. The widget adds a hidden `sentinel-token` input.
+  registration page. The widget adds a hidden `sentinel-token` input. When the
+  optional customization settings are configured, the div also carries
+  `data-widget`, `data-theme`, `data-scheme`, and/or `data-difficulty`
+  attributes (each rendered only when its setting is non-empty).
 - **Verify** (hook `register_addmember_process`): reads the posted
   `sentinel-token`, then POSTs (via cURL) to `{base_url}/sentinel/siteverify`
   with JSON body `{"secret":"…","response":"…","remoteip":"…"}` (the
@@ -112,6 +138,21 @@ AdminCP → Manage Products → **Redeyed Sentinel** → **Delete**. This
 removes the settings and hooks added by the product.
 
 ## Changelog
+
+### 1.0.2
+
+- **Added optional widget customization.** Four new (optional, empty-by-default)
+  settings in the **Redeyed Sentinel** option group emit matching `data-*`
+  attributes on the widget div only when set:
+  - **Widget Type** → `data-widget` (`behavioral` | `checkbox` | `press_hold` |
+    `image_pick` | …)
+  - **Theme** → `data-theme` (`auto` | `light` | `dark`)
+  - **Colour Scheme** → `data-scheme`
+  - **Difficulty** → `data-difficulty` (`easy` | `medium` | `hard` | `max` or
+    `1`–`6`) — only **raises** challenge strength above the adaptive baseline,
+    never lowers it.
+- Each value is HTML-escaped the same way as the Site Key. Backward compatible:
+  with all four empty the rendered markup is unchanged.
 
 ### 1.0.1
 
