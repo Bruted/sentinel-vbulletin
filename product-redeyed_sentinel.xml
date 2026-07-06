@@ -29,7 +29,7 @@
 <product productid="redeyed_sentinel" active="1">
 	<title>Redeyed Sentinel</title>
 	<description>Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to the registration form. Free and inert until the Site Key and Secret Key are configured.</description>
-	<version>1.0.2</version>
+	<version>1.0.3</version>
 	<url>https://redeyed.com</url>
 	<versioncheckurl></versioncheckurl>
 	<dependencies>
@@ -234,16 +234,29 @@ if ($rs_secret_key !== '') {
     // widget response is sent as "response", and the client IP is optional.
     $rs_passed = false;
     if ($rs_token !== '' && function_exists('curl_init')) {
-        // Best-effort client IP (optional). Prefer vB's stored IP, fall back
-        // to the raw remote address; only send it when it looks like an IP.
-        $rs_remote_ip = '';
-        if (isset($vbulletin) && isset($vbulletin->userinfo['ipaddress']) && $vbulletin->userinfo['ipaddress'] !== '') {
-            $rs_remote_ip = (string) $vbulletin->userinfo['ipaddress'];
-        } elseif (isset($_SERVER['REMOTE_ADDR'])) {
-            $rs_remote_ip = (string) $_SERVER['REMOTE_ADDR'];
-        }
-        if ($rs_remote_ip !== '' && filter_var($rs_remote_ip, FILTER_VALIDATE_IP) === false) {
-            $rs_remote_ip = '';
+        // Best-effort client IP (optional), resolved proxy-aware so the value
+        // we send matches the address that actually solved the challenge when
+        // the forum sits behind Cloudflare or a reverse proxy. Order of trust:
+        // CF-Connecting-IP -> first X-Forwarded-For hop -> X-Real-IP ->
+        // REMOTE_ADDR. Each candidate is validated; the first valid one wins.
+        $rs_remote_ip  = '';
+        $rs_ip_sources = array('HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR');
+        foreach ($rs_ip_sources as $rs_ip_source) {
+            if (empty($_SERVER[$rs_ip_source])) {
+                continue;
+            }
+            $rs_candidate = (string) $_SERVER[$rs_ip_source];
+            // X-Forwarded-For may be a comma-separated chain; take the first hop.
+            if (strpos($rs_candidate, ',') !== false) {
+                $rs_parts     = explode(',', $rs_candidate);
+                $rs_candidate = trim($rs_parts[0]);
+            } else {
+                $rs_candidate = trim($rs_candidate);
+            }
+            if ($rs_candidate !== '' && filter_var($rs_candidate, FILTER_VALIDATE_IP) !== false) {
+                $rs_remote_ip = $rs_candidate;
+                break;
+            }
         }
 
         $rs_body = array(
