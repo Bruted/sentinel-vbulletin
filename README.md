@@ -45,7 +45,7 @@ right away.
 
 ### Optional widget customization
 
-The same option group has four **optional** settings that customise the widget's
+The same option group has five **optional** settings that customise the widget's
 look and behaviour. Each is **empty by default**; when empty, nothing changes and
 the widget renders exactly as before. When set, each is emitted as a `data-*`
 attribute on the `<div class="sentinel-captcha">` element (HTML-escaped the same
@@ -57,6 +57,7 @@ way as the Site Key).
 | **Theme**        | `data-theme`      | `auto`, `light`, `dark`                                       |
 | **Colour Scheme**| `data-scheme`     | a colour scheme name to match your forum styling             |
 | **Difficulty**   | `data-difficulty` | `easy`, `medium`, `hard`, `max`, or `1`–`6`                  |
+| **Width**        | `data-width`      | a fixed widget width, e.g. `300px` or `100%`                 |
 
 > **Difficulty only raises the challenge.** `data-difficulty` sets a *minimum*
 > challenge strength: it only **raises** difficulty above Sentinel's adaptive
@@ -81,8 +82,8 @@ verification request body and is never printed to the page.
   `<div class="sentinel-captcha" data-sitekey="{site_key}"></div>` into the
   registration page. The widget adds a hidden `sentinel-token` input. When the
   optional customization settings are configured, the div also carries
-  `data-widget`, `data-theme`, `data-scheme`, and/or `data-difficulty`
-  attributes (each rendered only when its setting is non-empty).
+  `data-widget`, `data-theme`, `data-scheme`, `data-difficulty`, and/or
+  `data-width` attributes (each rendered only when its setting is non-empty).
 - **Verify** (hook `register_addmember_process`): reads the posted
   `sentinel-token`, then POSTs (via cURL) to `{base_url}/sentinel/siteverify`
   with JSON body `{"secret":"…","response":"…","remoteip":"…"}` (the
@@ -138,6 +139,11 @@ AdminCP → Manage Products → **Redeyed Sentinel** → **Delete**. This
 removes the settings and hooks added by the product.
 
 ## Changelog
+
+### 1.0.4
+
+- Add widget **Width** option (`data-width`) — a fixed widget width (e.g.
+  `300px` or `100%`) emitted on the widget div only when set.
 
 ### 1.0.3
 
