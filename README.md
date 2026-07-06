@@ -139,6 +139,13 @@ removes the settings and hooks added by the product.
 
 ## Changelog
 
+### 1.0.3
+
+- Send proxy-aware `remoteip` on verification (CF-Connecting-IP /
+  X-Forwarded-For / X-Real-IP / REMOTE_ADDR) so it matches the IP that solved
+  the challenge. Previously it used vB's stored IP or a bare `REMOTE_ADDR`,
+  which reported the proxy address behind Cloudflare / a reverse proxy.
+
 ### 1.0.2
 
 - **Added optional widget customization.** Four new (optional, empty-by-default)
