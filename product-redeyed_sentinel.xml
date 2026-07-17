@@ -4,24 +4,27 @@
   Redeyed Sentinel for vBulletin 5 / 4
   ============================================================================
   Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to
-  the vBulletin registration form.
+  the forms bots hit hardest: Registration, Lost Password and Contact Us. Each
+  form is independently toggleable in the settings; only Registration is on by
+  default, so upgrades change nothing until you opt the others in.
 
   Sentinel is free to install and stays INERT until the Secret Key is
   configured. With an empty Secret Key the product "fails open" and never
-  blocks registration.
+  blocks a submission.
+
+  Blocked attempts can be recorded to a log table (redeyed_sentinel_log) for
+  admin review. Because a single product XML cannot ship an AdminCP page, view
+  the log with SQL, e.g.:
+    SELECT FROM_UNIXTIME(dateline) AS time, form, ipaddress, outcome, score
+    FROM redeyed_sentinel_log ORDER BY dateline DESC LIMIT 100;
 
   Both keys come from the Redeyed Lab -> Sentinel -> Sites. The Secret Key is
   shown only once when the site is created.
 
-  Settings (AdminCP -> Settings -> Options -> Redeyed Sentinel):
-    redeyed_sentinel_site_key    public site key (safe in HTML, renders widget)
-    redeyed_sentinel_secret_key  per-site secret key (server-side only, never echoed)
-    redeyed_sentinel_base_url    base URL (default https://redeyed.com)
-    redeyed_sentinel_widget      optional data-widget    (behavioral|checkbox|press_hold|image_pick|...)
-    redeyed_sentinel_theme       optional data-theme     (auto|light|dark)
-    redeyed_sentinel_scheme      optional data-scheme    (colour scheme)
-    redeyed_sentinel_difficulty  optional data-difficulty(easy|medium|hard|max or 1-6; only RAISES strength)
-    redeyed_sentinel_width       optional data-width     (fixed widget width, e.g. 300px or 100%)
+  HOOK NOTE: vBulletin's hook names differ between versions/themes. The render
+  and verify hooks for Lost Password and Contact are best-effort and default
+  OFF; if a form does not render or verify on your build, adjust the hookname
+  on the matching plugin (see README).
 
   Author : Redeyed Corporation (https://redeyed.com)
   License: MIT (2026)
@@ -29,8 +32,8 @@
 
 <product productid="redeyed_sentinel" active="1">
 	<title>Redeyed Sentinel</title>
-	<description>Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to the registration form. Free and inert until the Site Key and Secret Key are configured.</description>
-	<version>1.0.4</version>
+	<description>Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to the registration, lost-password and contact forms, each toggleable, with optional block logging. Free and inert until the Site Key and Secret Key are configured.</description>
+	<version>1.0.5</version>
 	<url>https://redeyed.com</url>
 	<versioncheckurl></versioncheckurl>
 	<dependencies>
@@ -62,27 +65,51 @@
 			<defaultvalue>https://redeyed.com</defaultvalue>
 			<optioncode>textbox</optioncode>
 		</setting>
-		<setting varname="redeyed_sentinel_widget" displayorder="40">
+
+		<!-- Per-form protection toggles -->
+		<setting varname="redeyed_sentinel_protect_register" displayorder="40">
+			<datatype>boolean</datatype>
+			<defaultvalue>1</defaultvalue>
+			<optioncode>yesno</optioncode>
+		</setting>
+		<setting varname="redeyed_sentinel_protect_lostpw" displayorder="50">
+			<datatype>boolean</datatype>
+			<defaultvalue>0</defaultvalue>
+			<optioncode>yesno</optioncode>
+		</setting>
+		<setting varname="redeyed_sentinel_protect_contact" displayorder="60">
+			<datatype>boolean</datatype>
+			<defaultvalue>0</defaultvalue>
+			<optioncode>yesno</optioncode>
+		</setting>
+		<setting varname="redeyed_sentinel_log_blocks" displayorder="70">
+			<datatype>boolean</datatype>
+			<defaultvalue>1</defaultvalue>
+			<optioncode>yesno</optioncode>
+		</setting>
+
+		<!-- Optional widget customisation -->
+		<setting varname="redeyed_sentinel_widget" displayorder="80">
 			<datatype>free</datatype>
 			<defaultvalue></defaultvalue>
 			<optioncode>textbox</optioncode>
 		</setting>
-		<setting varname="redeyed_sentinel_theme" displayorder="50">
+		<setting varname="redeyed_sentinel_theme" displayorder="90">
 			<datatype>free</datatype>
 			<defaultvalue></defaultvalue>
 			<optioncode>textbox</optioncode>
 		</setting>
-		<setting varname="redeyed_sentinel_scheme" displayorder="60">
+		<setting varname="redeyed_sentinel_scheme" displayorder="100">
 			<datatype>free</datatype>
 			<defaultvalue></defaultvalue>
 			<optioncode>textbox</optioncode>
 		</setting>
-		<setting varname="redeyed_sentinel_difficulty" displayorder="70">
+		<setting varname="redeyed_sentinel_difficulty" displayorder="110">
 			<datatype>free</datatype>
 			<defaultvalue></defaultvalue>
 			<optioncode>textbox</optioncode>
 		</setting>
-		<setting varname="redeyed_sentinel_width" displayorder="80">
+		<setting varname="redeyed_sentinel_width" displayorder="120">
 			<datatype>free</datatype>
 			<defaultvalue></defaultvalue>
 			<optioncode>textbox</optioncode>
@@ -91,247 +118,254 @@
 
 	<!-- ================================================================ -->
 	<!-- Plugins (hooks)                                                   -->
-	<!--                                                                  -->
-	<!-- HOOK-LOCATION ASSUMPTIONS (admin: adjust per your version):      -->
-	<!--   * register_form_complete : fires while building the           -->
-	<!--     registration page; we append the widget to the page output. -->
-	<!--     Present in vB4 and vB5. If your template-driven theme does   -->
-	<!--     not echo $hook output here, place the widget div in the      -->
-	<!--     register template manually (see README).                     -->
-	<!--   * register_addmember_process : fires when the registration is  -->
-	<!--     submitted, before the account is saved; we verify the token  -->
-	<!--     and push an error to stop registration. Present in vB4 and   -->
-	<!--     vB5. Some vB5 builds use 'register_addmember_complete' or a  -->
-	<!--     controller validation hook instead; switch the hookname if   -->
-	<!--     verification does not trigger.                               -->
 	<!-- ================================================================ -->
 	<plugins>
 
 		<!-- ............................................................. -->
-		<!-- RENDER: inject the Sentinel widget into the register page.  -->
+		<!-- Shared helpers, defined once early on every page.           -->
 		<!-- ............................................................. -->
 		<plugin active="1" executionorder="5">
-			<title>Redeyed Sentinel: render widget</title>
-			<hookname>register_form_complete</hookname>
+			<title>Redeyed Sentinel: helpers</title>
+			<hookname>global_start</hookname>
 			<phpcode><![CDATA[
-// Redeyed Sentinel - render the CAPTCHA widget on the registration form.
-// Inert unless a Site Key is configured.
-$rs_site_key = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_site_key'));
-$rs_base_url = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_base_url'));
-if ($rs_base_url === '') {
-    $rs_base_url = 'https://redeyed.com';
+// Redeyed Sentinel shared helpers. Defined once (guarded) so the per-form
+// render/verify hooks stay tiny. vB::getDatastore() and $_SERVER are available
+// on every page via global.php.
+if (!function_exists('redeyed_sentinel_opt')) {
+    function redeyed_sentinel_opt($name) {
+        return trim((string) vB::getDatastore()->getOption('redeyed_sentinel_' . $name));
+    }
 }
-$rs_base_url = rtrim($rs_base_url, '/');
-
-// Optional widget customization. Each is empty by default and only emits a
-// data-* attribute when configured, so the widget is fully backward compatible.
-$rs_widget_style = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_widget'));
-$rs_theme        = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_theme'));
-$rs_scheme       = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_scheme'));
-$rs_difficulty   = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_difficulty'));
-$rs_width        = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_width'));
-
-if ($rs_site_key !== '') {
-    // The site key is public but still escaped to keep it inside the
-    // attribute value safely.
-    $rs_site_key_esc = htmlspecialchars($rs_site_key, ENT_QUOTES, 'UTF-8');
-    $rs_base_url_esc = htmlspecialchars($rs_base_url, ENT_QUOTES, 'UTF-8');
-
-    // Optional widget customization attributes. Each renders only when its
-    // option is non-empty and is escaped exactly like the site key above.
-    // 'difficulty' only RAISES challenge strength above the adaptive baseline;
-    // it never lowers it.
-    $rs_attrs = '';
-    if ($rs_widget_style !== '') {
-        $rs_attrs .= ' data-widget="' . htmlspecialchars($rs_widget_style, ENT_QUOTES, 'UTF-8') . '"';
+if (!function_exists('redeyed_sentinel_base_url')) {
+    function redeyed_sentinel_base_url() {
+        $u = redeyed_sentinel_opt('base_url');
+        if ($u === '') { $u = 'https://redeyed.com'; }
+        return rtrim($u, '/');
     }
-    if ($rs_theme !== '') {
-        $rs_attrs .= ' data-theme="' . htmlspecialchars($rs_theme, ENT_QUOTES, 'UTF-8') . '"';
+}
+if (!function_exists('redeyed_sentinel_widget_html')) {
+    function redeyed_sentinel_widget_html() {
+        $site = redeyed_sentinel_opt('site_key');
+        if ($site === '') { return ''; }
+        $siteEsc = htmlspecialchars($site, ENT_QUOTES, 'UTF-8');
+        $baseEsc = htmlspecialchars(redeyed_sentinel_base_url(), ENT_QUOTES, 'UTF-8');
+        $map = array('widget' => 'data-widget', 'theme' => 'data-theme', 'scheme' => 'data-scheme', 'difficulty' => 'data-difficulty', 'width' => 'data-width');
+        $attrs = '';
+        foreach ($map as $opt => $attr) {
+            $v = redeyed_sentinel_opt($opt);
+            if ($v !== '') { $attrs .= ' ' . $attr . '="' . htmlspecialchars($v, ENT_QUOTES, 'UTF-8') . '"'; }
+        }
+        return "\n<!-- Redeyed Sentinel -->\n"
+            . '<div class="redeyed-sentinel" style="margin:10px 0;">'
+            . '<script src="' . $baseEsc . '/sentinel.js" async></script>'
+            . '<div class="sentinel-captcha" data-sitekey="' . $siteEsc . '"' . $attrs . '></div>'
+            . "</div>\n<!-- /Redeyed Sentinel -->\n";
     }
-    if ($rs_scheme !== '') {
-        $rs_attrs .= ' data-scheme="' . htmlspecialchars($rs_scheme, ENT_QUOTES, 'UTF-8') . '"';
+}
+if (!function_exists('redeyed_sentinel_client_ip')) {
+    function redeyed_sentinel_client_ip() {
+        $sources = array('HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR');
+        foreach ($sources as $key) {
+            if (empty($_SERVER[$key])) { continue; }
+            $c = (string) $_SERVER[$key];
+            if (strpos($c, ',') !== false) { $parts = explode(',', $c); $c = trim($parts[0]); } else { $c = trim($c); }
+            if ($c !== '' && filter_var($c, FILTER_VALIDATE_IP) !== false) { return $c; }
+        }
+        return '';
     }
-    if ($rs_difficulty !== '') {
-        $rs_attrs .= ' data-difficulty="' . htmlspecialchars($rs_difficulty, ENT_QUOTES, 'UTF-8') . '"';
-    }
-    if ($rs_width !== '') {
-        $rs_attrs .= ' data-width="' . htmlspecialchars($rs_width, ENT_QUOTES, 'UTF-8') . '"';
-    }
-
-    $rs_widget = "\n<!-- Redeyed Sentinel -->\n"
-        . '<div class="redeyed-sentinel" style="margin:10px 0;">'
-        . '<script src="' . $rs_base_url_esc . '/sentinel.js" async></script>'
-        . '<div class="sentinel-captcha" data-sitekey="' . $rs_site_key_esc . '"' . $rs_attrs . '></div>'
-        . "</div>\n<!-- /Redeyed Sentinel -->\n";
-
-    // vB4: $HTML / template output is assembled into the page. We try the
-    // common output variables and fall back to the navbar-less append.
-    if (isset($templater) && is_object($templater)) {
-        // vB4 templater pattern: register the markup for the template.
-        $templater->register('redeyed_sentinel_widget', $rs_widget);
-    }
-
-    // Generic page output buffer used by several register paths. Append the
-    // widget before the closing form when we can find it.
-    if (isset($pagetext) && is_string($pagetext)) {
-        $pagetext .= $rs_widget;
-    }
-    if (isset($HTML) && is_string($HTML)) {
-        if (strpos($HTML, '</form>') !== false) {
-            $HTML = preg_replace('#</form>#', $rs_widget . '</form>', $HTML, 1);
-        } else {
-            $HTML .= $rs_widget;
+}
+if (!function_exists('redeyed_sentinel_log_block')) {
+    function redeyed_sentinel_log_block($form, $ip, $outcome, $score) {
+        if ((int) vB::getDatastore()->getOption('redeyed_sentinel_log_blocks') !== 1) { return; }
+        global $vbulletin;
+        if (empty($vbulletin->db) || !is_object($vbulletin->db)) { return; }
+        $db = $vbulletin->db;
+        try {
+            // Lazily create the log table (a single product XML cannot run
+            // install SQL reliably across vB4/vB5, so create on first use).
+            $db->query_write("CREATE TABLE IF NOT EXISTS " . TABLE_PREFIX . "redeyed_sentinel_log (
+                logid INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                form VARCHAR(20) NOT NULL DEFAULT '',
+                ipaddress VARCHAR(45) NOT NULL DEFAULT '',
+                outcome VARCHAR(40) NOT NULL DEFAULT '',
+                score FLOAT NULL,
+                dateline INT UNSIGNED NOT NULL DEFAULT 0,
+                PRIMARY KEY (logid),
+                KEY dateline (dateline)
+            ) ENGINE=InnoDB");
+            $db->query_write(sprintf(
+                "INSERT INTO " . TABLE_PREFIX . "redeyed_sentinel_log (form, ipaddress, outcome, score, dateline) VALUES ('%s', '%s', '%s', %s, %d)",
+                $db->escape_string(substr($form, 0, 20)),
+                $db->escape_string(substr($ip, 0, 45)),
+                $db->escape_string(substr($outcome, 0, 40)),
+                ($score === null ? 'NULL' : (float) $score),
+                (defined('TIMENOW') ? TIMENOW : time())
+            ));
+        } catch (Exception $e) {
+            // Logging must never break verification.
         }
     }
-    if (isset($templater_register) && is_object($templater_register)) {
-        $templater_register->register('redeyed_sentinel_widget', $rs_widget);
-    }
+}
+if (!function_exists('redeyed_sentinel_check')) {
+    // Verify the posted token for $form. Returns true if passed (or inert),
+    // false if blocked (after logging). Fail-open when no Secret Key is set.
+    function redeyed_sentinel_check($form) {
+        $secret = redeyed_sentinel_opt('secret_key');
+        if ($secret === '') { return true; }
 
-    // vB5: expose the markup so it can be echoed by the template via
-    // {{ data.redeyed_sentinel_widget }} when supported.
-    if (isset($data) && is_array($data)) {
-        $data['redeyed_sentinel_widget'] = $rs_widget;
+        global $vbulletin;
+        $token = '';
+        if (isset($vbulletin->input) && is_object($vbulletin->input)) {
+            $token = (string) $vbulletin->input->clean_gpc('p', 'sentinel-token', TYPE_NOHTML);
+        }
+        if ($token === '' && isset($_POST['sentinel-token'])) {
+            $token = (string) $_POST['sentinel-token'];
+        }
+
+        $ip = redeyed_sentinel_client_ip();
+        $outcome = 'missing_token';
+        $score = null;
+        $passed = false;
+
+        if ($token !== '' && function_exists('curl_init')) {
+            $outcome = 'error';
+            $body = array('secret' => $secret, 'response' => $token);
+            if ($ip !== '') { $body['remoteip'] = $ip; }
+
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, redeyed_sentinel_base_url() . '/sentinel/siteverify');
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json', 'Accept: application/json'));
+
+            $resp   = curl_exec($ch);
+            $errno  = curl_errno($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($errno === 0 && $resp !== false && $status >= 200 && $status < 300) {
+                $d = json_decode($resp, true);
+                if (is_array($d)) {
+                    $passed  = isset($d['success']) && $d['success'] === true;
+                    $outcome = isset($d['outcome']) ? (string) $d['outcome'] : '';
+                    $score   = isset($d['score']) ? (float) $d['score'] : null;
+                }
+            }
+        }
+
+        if (!$passed) {
+            redeyed_sentinel_log_block($form, $ip, $outcome, $score);
+        }
+
+        return $passed;
+    }
+}
+if (!function_exists('redeyed_sentinel_block')) {
+    // Push the failure error into whatever error channel the current form uses.
+    function redeyed_sentinel_block() {
+        $msg = 'Sentinel verification failed. Please complete the verification challenge and try again.';
+        if (isset($GLOBALS['errors']) && is_array($GLOBALS['errors'])) { $GLOBALS['errors'][] = $msg; }
+        if (isset($GLOBALS['register_errors']) && is_array($GLOBALS['register_errors'])) { $GLOBALS['register_errors'][] = $msg; }
+        if (class_exists('vB_Exception_Api')) { throw new vB_Exception_Api(array('{1}', $msg)); }
+        if (empty($GLOBALS['errors']) && empty($GLOBALS['register_errors'])) {
+            if (function_exists('standard_error')) { standard_error($msg); } else { die($msg); }
+        }
     }
 }
 ]]></phpcode>
 		</plugin>
 
-		<!-- ............................................................. -->
-		<!-- VERIFY: validate the submitted token and stop on failure.   -->
-		<!-- ............................................................. -->
+		<!-- ....................... REGISTRATION ........................ -->
 		<plugin active="1" executionorder="5">
-			<title>Redeyed Sentinel: verify token</title>
+			<title>Redeyed Sentinel: render (registration)</title>
+			<hookname>register_form_complete</hookname>
+			<phpcode><![CDATA[
+if ((int) vB::getDatastore()->getOption('redeyed_sentinel_protect_register') === 1) {
+    $rs_widget = function_exists('redeyed_sentinel_widget_html') ? redeyed_sentinel_widget_html() : '';
+    if ($rs_widget !== '') {
+        if (isset($templater) && is_object($templater)) { $templater->register('redeyed_sentinel_widget', $rs_widget); }
+        if (isset($templater_register) && is_object($templater_register)) { $templater_register->register('redeyed_sentinel_widget', $rs_widget); }
+        if (isset($pagetext) && is_string($pagetext)) { $pagetext .= $rs_widget; }
+        if (isset($HTML) && is_string($HTML)) {
+            $HTML = (strpos($HTML, '</form>') !== false) ? preg_replace('#</form>#', $rs_widget . '</form>', $HTML, 1) : $HTML . $rs_widget;
+        }
+        if (isset($data) && is_array($data)) { $data['redeyed_sentinel_widget'] = $rs_widget; }
+    }
+}
+]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Redeyed Sentinel: verify (registration)</title>
 			<hookname>register_addmember_process</hookname>
 			<phpcode><![CDATA[
-// Redeyed Sentinel - verify the submitted CAPTCHA token before the account
-// is created. Fail open when the Secret Key is not configured.
-$rs_secret_key = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_secret_key'));
-$rs_base_url   = trim((string) vB::getDatastore()->getOption('redeyed_sentinel_base_url'));
-if ($rs_base_url === '') {
-    $rs_base_url = 'https://redeyed.com';
+if ((int) vB::getDatastore()->getOption('redeyed_sentinel_protect_register') === 1
+    && function_exists('redeyed_sentinel_check') && !redeyed_sentinel_check('register')) {
+    redeyed_sentinel_block();
 }
-$rs_base_url = rtrim($rs_base_url, '/');
+]]></phpcode>
+		</plugin>
 
-// Only enforce when the Secret Key is present; otherwise Sentinel is inert.
-if ($rs_secret_key !== '') {
-
-    // Read the posted token across vB4 / vB5 request abstractions.
-    $rs_token = '';
-    if (isset($vbulletin) && isset($vbulletin->input)) {
-        // vB4 input cleaner.
-        $rs_token = (string) $vbulletin->input->clean_gpc('p', 'sentinel-token', TYPE_NOHTML);
+		<!-- ....................... LOST PASSWORD ....................... -->
+		<!-- Hook names vary by version; default OFF. Adjust if needed.   -->
+		<plugin active="1" executionorder="5">
+			<title>Redeyed Sentinel: render (lost password)</title>
+			<hookname>login_lostpw</hookname>
+			<phpcode><![CDATA[
+if ((int) vB::getDatastore()->getOption('redeyed_sentinel_protect_lostpw') === 1) {
+    $rs_widget = function_exists('redeyed_sentinel_widget_html') ? redeyed_sentinel_widget_html() : '';
+    if ($rs_widget !== '') {
+        if (isset($templater) && is_object($templater)) { $templater->register('redeyed_sentinel_widget', $rs_widget); }
+        if (isset($HTML) && is_string($HTML)) {
+            $HTML = (strpos($HTML, '</form>') !== false) ? preg_replace('#</form>#', $rs_widget . '</form>', $HTML, 1) : $HTML . $rs_widget;
+        }
+        if (isset($pagetext) && is_string($pagetext)) { $pagetext .= $rs_widget; }
     }
-    if ($rs_token === '' && class_exists('vB_Request') && method_exists('vB_Request', 'createFromGlobals')) {
-        // vB5 request object.
-        try {
-            $rs_request = vB::getRequest();
-            if ($rs_request) {
-                $rs_token = (string) $rs_request->getRequest('sentinel-token', '', TYPE_NOHTML);
-            }
-        } catch (Exception $rs_e) {
-            $rs_token = '';
+}
+]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Redeyed Sentinel: verify (lost password)</title>
+			<hookname>login_dolostpw_process</hookname>
+			<phpcode><![CDATA[
+if ((int) vB::getDatastore()->getOption('redeyed_sentinel_protect_lostpw') === 1
+    && function_exists('redeyed_sentinel_check') && !redeyed_sentinel_check('lostpw')) {
+    redeyed_sentinel_block();
+}
+]]></phpcode>
+		</plugin>
+
+		<!-- ......................... CONTACT US ........................ -->
+		<!-- Hook names vary by version; default OFF. Adjust if needed.   -->
+		<plugin active="1" executionorder="5">
+			<title>Redeyed Sentinel: render (contact)</title>
+			<hookname>sendmessage_form_complete</hookname>
+			<phpcode><![CDATA[
+if ((int) vB::getDatastore()->getOption('redeyed_sentinel_protect_contact') === 1) {
+    $rs_widget = function_exists('redeyed_sentinel_widget_html') ? redeyed_sentinel_widget_html() : '';
+    if ($rs_widget !== '') {
+        if (isset($templater) && is_object($templater)) { $templater->register('redeyed_sentinel_widget', $rs_widget); }
+        if (isset($HTML) && is_string($HTML)) {
+            $HTML = (strpos($HTML, '</form>') !== false) ? preg_replace('#</form>#', $rs_widget . '</form>', $HTML, 1) : $HTML . $rs_widget;
         }
+        if (isset($pagetext) && is_string($pagetext)) { $pagetext .= $rs_widget; }
     }
-    if ($rs_token === '' && isset($_POST['sentinel-token'])) {
-        // Last-resort raw fallback (still treated as untrusted; only used
-        // as the verify-server payload, never echoed).
-        $rs_token = (string) $_POST['sentinel-token'];
-    }
-
-    // ------- inline verify helper (cURL) ------------------------------
-    // reCAPTCHA/Turnstile-style siteverify: the per-site Secret Key
-    // authenticates the call in the JSON body (no X-Api-Key header), the
-    // widget response is sent as "response", and the client IP is optional.
-    $rs_passed = false;
-    if ($rs_token !== '' && function_exists('curl_init')) {
-        // Best-effort client IP (optional), resolved proxy-aware so the value
-        // we send matches the address that actually solved the challenge when
-        // the forum sits behind Cloudflare or a reverse proxy. Order of trust:
-        // CF-Connecting-IP -> first X-Forwarded-For hop -> X-Real-IP ->
-        // REMOTE_ADDR. Each candidate is validated; the first valid one wins.
-        $rs_remote_ip  = '';
-        $rs_ip_sources = array('HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR');
-        foreach ($rs_ip_sources as $rs_ip_source) {
-            if (empty($_SERVER[$rs_ip_source])) {
-                continue;
-            }
-            $rs_candidate = (string) $_SERVER[$rs_ip_source];
-            // X-Forwarded-For may be a comma-separated chain; take the first hop.
-            if (strpos($rs_candidate, ',') !== false) {
-                $rs_parts     = explode(',', $rs_candidate);
-                $rs_candidate = trim($rs_parts[0]);
-            } else {
-                $rs_candidate = trim($rs_candidate);
-            }
-            if ($rs_candidate !== '' && filter_var($rs_candidate, FILTER_VALIDATE_IP) !== false) {
-                $rs_remote_ip = $rs_candidate;
-                break;
-            }
-        }
-
-        $rs_body = array(
-            'secret'   => $rs_secret_key,
-            'response' => $rs_token,
-        );
-        if ($rs_remote_ip !== '') {
-            $rs_body['remoteip'] = $rs_remote_ip;
-        }
-        $rs_payload = json_encode($rs_body);
-
-        $rs_ch = curl_init();
-        curl_setopt($rs_ch, CURLOPT_URL, $rs_base_url . '/sentinel/siteverify');
-        curl_setopt($rs_ch, CURLOPT_POST, true);
-        curl_setopt($rs_ch, CURLOPT_POSTFIELDS, $rs_payload);
-        curl_setopt($rs_ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($rs_ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($rs_ch, CURLOPT_CONNECTTIMEOUT, 5);
-        curl_setopt($rs_ch, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($rs_ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($rs_ch, CURLOPT_HTTPHEADER, array(
-            'Content-Type: application/json',
-            'Accept: application/json',
-        ));
-
-        $rs_response = curl_exec($rs_ch);
-        $rs_errno    = curl_errno($rs_ch);
-        $rs_status   = (int) curl_getinfo($rs_ch, CURLINFO_HTTP_CODE);
-        curl_close($rs_ch);
-
-        if ($rs_errno === 0 && $rs_response !== false && $rs_status >= 200 && $rs_status < 300) {
-            $rs_decoded = json_decode($rs_response, true);
-            // Response shape: {"success": true|false, "outcome": "...", ...}.
-            // PASSED only when the top-level success === true.
-            if (is_array($rs_decoded) && isset($rs_decoded['success']) && $rs_decoded['success'] === true) {
-                $rs_passed = true;
-            }
-        }
-    }
-    // ------------------------------------------------------------------
-
-    if (!$rs_passed) {
-        $rs_msg = 'Sentinel verification failed. Please complete the verification challenge and try again.';
-
-        // vB4: register data manager collects errors in $errors.
-        if (isset($errors) && is_array($errors)) {
-            $errors[] = $rs_msg;
-        }
-        // vB4: many register paths inspect a $register_errors array too.
-        if (isset($register_errors) && is_array($register_errors)) {
-            $register_errors[] = $rs_msg;
-        }
-        // vB5: throw to abort the controller action with a friendly error.
-        if (class_exists('vB_Exception_Api')) {
-            throw new vB_Exception_Api(array('{1}', $rs_msg));
-        }
-        // Hard fallback so registration cannot silently continue.
-        if (empty($errors) && empty($register_errors)) {
-            if (function_exists('standard_error')) {
-                standard_error($rs_msg);
-            } else {
-                die($rs_msg);
-            }
-        }
-    }
+}
+]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Redeyed Sentinel: verify (contact)</title>
+			<hookname>sendmessage_start</hookname>
+			<phpcode><![CDATA[
+// Only verify an actual send (POST), not the initial form display.
+if ((int) vB::getDatastore()->getOption('redeyed_sentinel_protect_contact') === 1
+    && (isset($_POST['do']) && $_POST['do'] === 'mail')
+    && function_exists('redeyed_sentinel_check') && !redeyed_sentinel_check('contact')) {
+    redeyed_sentinel_block();
 }
 ]]></phpcode>
 		</plugin>
@@ -342,21 +376,31 @@ if ($rs_secret_key !== '') {
 
 	<!-- ================================================================ -->
 	<!-- Phrases: AdminCP setting-group + setting labels / descriptions.  -->
-	<!-- vBulletin renders each setting using the phrases                 -->
-	<!--   setting_<varname>_title  and  setting_<varname>_desc.          -->
 	<!-- ================================================================ -->
 	<phrases>
 		<phrasetype name="Redeyed Sentinel" fieldname="setting">
 			<phrase name="settinggroup_redeyed_sentinel" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Redeyed Sentinel]]></phrase>
 
 			<phrase name="setting_redeyed_sentinel_site_key_title" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Site Key]]></phrase>
-			<phrase name="setting_redeyed_sentinel_site_key_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Public Sentinel site key from Redeyed Lab &amp;rarr; Sentinel &amp;rarr; Sites. Safe to expose in HTML; it renders the CAPTCHA widget on the registration form.]]></phrase>
+			<phrase name="setting_redeyed_sentinel_site_key_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Public Sentinel site key from Redeyed Lab &amp;rarr; Sentinel &amp;rarr; Sites. Safe to expose in HTML; it renders the CAPTCHA widget on the protected forms.]]></phrase>
 
 			<phrase name="setting_redeyed_sentinel_secret_key_title" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Secret Key]]></phrase>
-			<phrase name="setting_redeyed_sentinel_secret_key_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Per-site Secret Key from Redeyed Lab &amp;rarr; Sentinel &amp;rarr; Sites (shown only once). Used server-side only to authenticate verification and never printed to the page. While this is empty, Sentinel is inert and registration is never blocked.]]></phrase>
+			<phrase name="setting_redeyed_sentinel_secret_key_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Per-site Secret Key from Redeyed Lab &amp;rarr; Sentinel &amp;rarr; Sites (shown only once). Used server-side only to authenticate verification and never printed to the page. While this is empty, Sentinel is inert and no submission is ever blocked.]]></phrase>
 
 			<phrase name="setting_redeyed_sentinel_base_url_title" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL]]></phrase>
 			<phrase name="setting_redeyed_sentinel_base_url_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL of the Sentinel service. Defaults to https://redeyed.com. Only change this if you run a self-hosted Sentinel instance.]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_protect_register_title" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Protect: Registration]]></phrase>
+			<phrase name="setting_redeyed_sentinel_protect_register_desc" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Show and verify the CAPTCHA on the registration form. On by default.]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_protect_lostpw_title" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Protect: Lost Password]]></phrase>
+			<phrase name="setting_redeyed_sentinel_protect_lostpw_desc" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Show and verify the CAPTCHA on the lost-password form. Off by default. Note: vBulletin hook names vary by version &amp;mdash; if it does not appear, adjust the plugin hookname (see README).]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_protect_contact_title" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Protect: Contact Us]]></phrase>
+			<phrase name="setting_redeyed_sentinel_protect_contact_desc" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Show and verify the CAPTCHA on the Contact Us form. Off by default. Note: vBulletin hook names vary by version &amp;mdash; if it does not appear, adjust the plugin hookname (see README).]]></phrase>
+
+			<phrase name="setting_redeyed_sentinel_log_blocks_title" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Log blocked attempts]]></phrase>
+			<phrase name="setting_redeyed_sentinel_log_blocks_desc" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Record each blocked submission (form, IP, outcome, score) to the redeyed_sentinel_log table. On by default. A single product cannot ship an AdminCP page, so review it with SQL (see the product header / README).]]></phrase>
 
 			<phrase name="setting_redeyed_sentinel_widget_title" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Widget Type]]></phrase>
 			<phrase name="setting_redeyed_sentinel_widget_desc" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Optional. Sets the widget challenge style via <em>data-widget</em>, e.g. <em>behavioral</em>, <em>checkbox</em>, <em>press_hold</em>, or <em>image_pick</em>. Leave empty to use the Sentinel default.]]></phrase>

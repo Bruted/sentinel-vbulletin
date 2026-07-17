@@ -140,6 +140,20 @@ removes the settings and hooks added by the product.
 
 ## Changelog
 
+### 1.0.5
+
+- **Per-form protection** with independent toggles: **Registration** (on by
+  default), **Lost Password** and **Contact Us** (off by default, so upgrades
+  change nothing until you enable them). Shared render/verify logic is defined
+  once in a `global_start` helper.
+- **Block log.** Blocked attempts (form, IP, outcome, score) are recorded to a
+  `redeyed_sentinel_log` table, created lazily on first use and toggled by the
+  **Log blocked attempts** setting. Because a single product XML cannot ship an
+  AdminCP page, review the log with SQL (see the product header / below).
+- Note: vBulletin's hook names for Lost Password and Contact vary by
+  version/theme; those two default OFF and may need the hookname adjusting on
+  your build (see *Hook-location assumptions*).
+
 ### 1.0.4
 
 - Add widget **Width** option (`data-width`) — a fixed widget width (e.g.
