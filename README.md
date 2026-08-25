@@ -53,7 +53,7 @@ way as the Site Key).
 
 | Setting          | Attribute         | Values                                                        |
 |------------------|-------------------|---------------------------------------------------------------|
-| **Widget Type**  | `data-widget`     | `behavioral`, `checkbox`, `press_hold`, `image_pick`, …       |
+| **Widget Type**  | `data-widget`     | `adaptive`, `all`, `behavioral`, `pow`, `press_hold`, `text_math`, `image_puzzle`, `rotate_align`, `image_pick`, `relational_scene`, `motion_track`, `light_shadow`, `shape_match` |
 | **Theme**        | `data-theme`      | `auto`, `light`, `dark`                                       |
 | **Colour Scheme**| `data-scheme`     | a colour scheme name to match your forum styling             |
 | **Difficulty**   | `data-difficulty` | `easy`, `medium`, `hard`, `max`, or `1`–`6`                  |
@@ -140,6 +140,12 @@ removes the settings and hooks added by the product.
 
 ## Changelog
 
+### 1.0.6
+
+- **Widget Type documentation refreshed** to cover every available challenge,
+  including the new **Object match** 3D challenge (`shape_match`) and the `relational_scene`, `motion_track` and `light_shadow` reasoning challenges.
+- Removed `checkbox` from the widget types — it was never a real Sentinel challenge and silently fell back to the site default. Use `behavioral` for the one-click checkbox, or `adaptive` to let Sentinel choose by risk.
+
 ### 1.0.5
 
 - **Per-form protection** with independent toggles: **Registration** (on by
@@ -171,8 +177,9 @@ removes the settings and hooks added by the product.
 - **Added optional widget customization.** Four new (optional, empty-by-default)
   settings in the **Redeyed Sentinel** option group emit matching `data-*`
   attributes on the widget div only when set:
-  - **Widget Type** → `data-widget` (`behavioral` | `checkbox` | `press_hold` |
-    `image_pick` | …)
+  - **Widget Type** → `data-widget` (`adaptive` | `all` | `behavioral` | `pow` |
+    `press_hold` | `text_math` | `image_puzzle` | `rotate_align` | `image_pick` |
+    `relational_scene` | `motion_track` | `light_shadow` | `shape_match`)
   - **Theme** → `data-theme` (`auto` | `light` | `dark`)
   - **Colour Scheme** → `data-scheme`
   - **Difficulty** → `data-difficulty` (`easy` | `medium` | `hard` | `max` or

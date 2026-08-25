@@ -33,7 +33,7 @@
 <product productid="redeyed_sentinel" active="1">
 	<title>Redeyed Sentinel</title>
 	<description>Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to the registration, lost-password and contact forms, each toggleable, with optional block logging. Free and inert until the Site Key and Secret Key are configured.</description>
-	<version>1.0.5</version>
+	<version>1.0.6</version>
 	<url>https://redeyed.com</url>
 	<versioncheckurl></versioncheckurl>
 	<dependencies>
@@ -403,7 +403,7 @@ if ((int) vB::getDatastore()->getOption('redeyed_sentinel_protect_contact') === 
 			<phrase name="setting_redeyed_sentinel_log_blocks_desc" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Record each blocked submission (form, IP, outcome, score) to the redeyed_sentinel_log table. On by default. A single product cannot ship an AdminCP page, so review it with SQL (see the product header / README).]]></phrase>
 
 			<phrase name="setting_redeyed_sentinel_widget_title" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Widget Type]]></phrase>
-			<phrase name="setting_redeyed_sentinel_widget_desc" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Optional. Sets the widget challenge style via <em>data-widget</em>, e.g. <em>behavioral</em>, <em>checkbox</em>, <em>press_hold</em>, or <em>image_pick</em>. Leave empty to use the Sentinel default.]]></phrase>
+			<phrase name="setting_redeyed_sentinel_widget_desc" date="1719000000" username="Redeyed" version="1.0.6"><![CDATA[Optional. Sets the widget challenge style via <em>data-widget</em>. Use <em>adaptive</em> (recommended) to let Sentinel escalate by risk, <em>all</em> to randomise per visitor, or name a type: <em>behavioral</em>, <em>pow</em>, <em>press_hold</em>, <em>text_math</em>, <em>image_puzzle</em>, <em>rotate_align</em>, <em>image_pick</em>, <em>relational_scene</em>, <em>motion_track</em>, <em>light_shadow</em>, <em>shape_match</em>. Leave empty to use the Sentinel default.]]></phrase>
 
 			<phrase name="setting_redeyed_sentinel_theme_title" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Theme]]></phrase>
 			<phrase name="setting_redeyed_sentinel_theme_desc" date="1719000000" username="Redeyed" version="1.0.2"><![CDATA[Optional. Sets the widget theme via <em>data-theme</em>: <em>auto</em>, <em>light</em>, or <em>dark</em>. Leave empty to use the Sentinel default (auto).]]></phrase>
