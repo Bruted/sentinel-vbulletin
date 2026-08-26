@@ -3,7 +3,7 @@
 <!--
   Redeyed Sentinel for vBulletin 5 / 4
   ============================================================================
-  Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to
+  Adds the Redeyed Sentinel CAPTCHA (CAPTCHA + IP reputation) to
   the forms bots hit hardest: Registration, Lost Password and Contact Us. Each
   form is independently toggleable in the settings; only Registration is on by
   default, so upgrades change nothing until you opt the others in.
@@ -32,7 +32,7 @@
 
 <product productid="redeyed_sentinel" active="1">
 	<title>Redeyed Sentinel</title>
-	<description>Adds the Redeyed Sentinel CAPTCHA (self-hosted CAPTCHA + IP reputation) to the registration, lost-password and contact forms, each toggleable, with optional block logging. Free and inert until the Site Key and Secret Key are configured.</description>
+	<description>Adds the Redeyed Sentinel CAPTCHA (CAPTCHA + IP reputation) to the registration, lost-password and contact forms, each toggleable, with optional block logging. Free and inert until the Site Key and Secret Key are configured.</description>
 	<version>1.0.6</version>
 	<url>https://redeyed.com</url>
 	<versioncheckurl></versioncheckurl>
@@ -388,7 +388,7 @@ if ((int) vB::getDatastore()->getOption('redeyed_sentinel_protect_contact') === 
 			<phrase name="setting_redeyed_sentinel_secret_key_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Per-site Secret Key from Redeyed Lab &amp;rarr; Sentinel &amp;rarr; Sites (shown only once). Used server-side only to authenticate verification and never printed to the page. While this is empty, Sentinel is inert and no submission is ever blocked.]]></phrase>
 
 			<phrase name="setting_redeyed_sentinel_base_url_title" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL]]></phrase>
-			<phrase name="setting_redeyed_sentinel_base_url_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL of the Sentinel service. Defaults to https://redeyed.com. Only change this if you run a self-hosted Sentinel instance.]]></phrase>
+			<phrase name="setting_redeyed_sentinel_base_url_desc" date="1719000000" username="Redeyed" version="1.0.1"><![CDATA[Base URL of the Sentinel service. Defaults to https://redeyed.com. Only change this to point at a custom Sentinel endpoint instance.]]></phrase>
 
 			<phrase name="setting_redeyed_sentinel_protect_register_title" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Protect: Registration]]></phrase>
 			<phrase name="setting_redeyed_sentinel_protect_register_desc" date="1719000000" username="Redeyed" version="1.0.5"><![CDATA[Show and verify the CAPTCHA on the registration form. On by default.]]></phrase>

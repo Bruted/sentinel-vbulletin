@@ -1,6 +1,6 @@
 # Redeyed Sentinel for vBulletin 5 / 4
 
-Adds the **Redeyed Sentinel** CAPTCHA (self-hosted CAPTCHA + IP reputation)
+Adds the **Redeyed Sentinel** CAPTCHA (CAPTCHA + IP reputation)
 to your vBulletin registration form. Free to install and **inert until you
 configure your Secret Key** — with an empty Secret Key it never blocks
 registration ("fail open").
@@ -37,7 +37,7 @@ Go to **AdminCP → Settings → Options** and open the
 |----------------|-------------------------------------------------------------------|
 | **Site Key**   | Redeyed Lab → **Sentinel → Sites** (public key)                   |
 | **Secret Key** | Redeyed Lab → **Sentinel → Sites** (secret key, shown once)       |
-| **Base URL**   | Defaults to `https://redeyed.com`; change only if self-hosting    |
+| **Base URL**   | Defaults to `https://redeyed.com`; change only to point at a custom Sentinel endpoint    |
 
 Both keys come from the same place — **Redeyed Lab → Sentinel → Sites**. The
 **Secret Key** is displayed **only once** when the site is created, so copy it
@@ -53,7 +53,7 @@ way as the Site Key).
 
 | Setting          | Attribute         | Values                                                        |
 |------------------|-------------------|---------------------------------------------------------------|
-| **Widget Type**  | `data-widget`     | `adaptive`, `all`, `behavioral`, `pow`, `press_hold`, `text_math`, `image_puzzle`, `rotate_align`, `image_pick`, `relational_scene`, `motion_track`, `light_shadow`, `shape_match` |
+| **Widget Type**  | `data-widget`     | `adaptive`, `all`, `behavioral`, `pow`, `press_hold`, `text_math`, `image_puzzle`, `rotate_align`, `image_pick`, `relational_scene`, `motion_track`, `light_shadow`, `shape_match`, `count_match` |
 | **Theme**        | `data-theme`      | `auto`, `light`, `dark`                                       |
 | **Colour Scheme**| `data-scheme`     | a colour scheme name to match your forum styling             |
 | **Difficulty**   | `data-difficulty` | `easy`, `medium`, `hard`, `max`, or `1`–`6`                  |
@@ -179,7 +179,7 @@ removes the settings and hooks added by the product.
   attributes on the widget div only when set:
   - **Widget Type** → `data-widget` (`adaptive` | `all` | `behavioral` | `pow` |
     `press_hold` | `text_math` | `image_puzzle` | `rotate_align` | `image_pick` |
-    `relational_scene` | `motion_track` | `light_shadow` | `shape_match`)
+    `relational_scene` | `motion_track` | `light_shadow` | `shape_match` | `count_match`)
   - **Theme** → `data-theme` (`auto` | `light` | `dark`)
   - **Colour Scheme** → `data-scheme`
   - **Difficulty** → `data-difficulty` (`easy` | `medium` | `hard` | `max` or
